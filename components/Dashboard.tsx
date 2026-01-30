@@ -1,499 +1,249 @@
+
 import React, { useState, useEffect } from 'react';
+import { PieChart, CheckCircle, Building, Shield, BookOpen, FileText, Award, Clock, ChevronRight, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { Page } from '../App';
-import {
-    Building, Shield, BookOpen, FileText,
-    Award, Clock, Activity, ChevronRight, Download,
-    AlertOctagon
-} from 'lucide-react';
 
-interface DashboardStats {
-    auditsCount: number;
-    trainingsInProgress: number;
-    trainingsCompleted: number;
-    lastAudit: any;
-}
-
-interface DashboardProps {
-    onNavigate?: (page: Page) => void;
-    onContactClick?: (msg?: string) => void;
-    type?: 'nis2' | 'iso27001';
-}
-
-export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onContactClick, type = 'nis2' }) => {
+export const Dashboard = (props) => {
     const { user, token } = useAuth();
-    const [stats, setStats] = useState<DashboardStats>({
-        auditsCount: 0,
-        trainingsInProgress: 0,
-        trainingsCompleted: 0,
-        lastAudit: null
-    });
-    const [auditHistory, setAuditHistory] = useState<any[]>([]);
-    const [trainingProgress, setTrainingProgress] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [nis2Stats, setNis2Stats] = useState({ audits: [], lastAudit: null });
+    const [isoStats, setIsoStats] = useState({ audits: [], lastAudit: null });
+    const [isExporting, setIsExporting] = useState(false);
+    const [loading, setLoading] = useState(true);
 
-    // Calcul du score de conformité et du niveau de risque (version sobre)
-    const getComplianceLevel = () => {
-        if (!stats.lastAudit) return null;
-        const scorePercent = Math.round((stats.lastAudit.readiness_score / 16) * 100);
-
-        if (scorePercent >= 80) {
-            return {
-                level: 'Conforme',
-                color: 'emerald',
-                textColor: 'text-emerald-400',
-                barColor: 'bg-emerald-500',
-                pillClass: 'bg-emerald-900/30 border-emerald-600 text-emerald-300',
-                riskLevel: 'Faible'
-            };
-        } else if (scorePercent >= 60) {
-            return {
-                level: 'À renforcer',
-                color: 'yellow',
-                textColor: 'text-yellow-400',
-                barColor: 'bg-yellow-500',
-                pillClass: 'bg-yellow-900/30 border-yellow-600 text-yellow-300',
-                riskLevel: 'Modéré'
-            };
-        }
-
-        return {
-            level: 'Prioritaire',
-            color: 'red',
-            textColor: 'text-red-400',
-            barColor: 'bg-red-500',
-            pillClass: 'bg-red-900/30 border-red-600 text-red-300',
-            riskLevel: 'Élevé'
-        };
+    // Fetch NIS2 audits
+    const fetchNis2 = async () => {
+        const res = await fetch('/api/audit/history?type=nis2', { headers: { 'Authorization': `Bearer ${token}` } });
+        const audits = res.ok ? await res.json() : [];
+        setNis2Stats({ audits, lastAudit: audits[0] || null });
+    };
+    // Fetch ISO audits
+    const fetchIso = async () => {
+        const res = await fetch('/api/audit/history?type=iso27001', { headers: { 'Authorization': `Bearer ${token}` } });
+        const audits = res.ok ? await res.json() : [];
+        setIsoStats({ audits, lastAudit: audits[0] || null });
     };
 
-    const complianceLevel = getComplianceLevel();
-    const scorePercent = stats.lastAudit ? Math.round((stats.lastAudit.readiness_score / 16) * 100) : 0;
-    const missingPoints = stats.lastAudit ? Math.max(0, 16 - stats.lastAudit.readiness_score) : 0;
-
     useEffect(() => {
-        if (token) {
-            fetchDashboardData();
-        }
-    }, [token]);
+        setLoading(true);
+        Promise.all([fetchNis2(), fetchIso()]).finally(() => setLoading(false));
+    }, [user]);
 
-    // Polling pour mise à jour automatique toutes les 5 secondes
-    useEffect(() => {
-        if (token) {
-            const interval = setInterval(() => {
-                fetchDashboardData();
-            }, 5000);
-
-            return () => clearInterval(interval);
-        }
-    }, [token]);
-
-    // Écouter l'événement de complétion d'audit pour mise à jour immédiate
-    useEffect(() => {
-        const handleAuditCompleted = () => {
-            if (token) {
-                fetchDashboardData();
-            }
-        };
-
-        window.addEventListener('auditCompleted', handleAuditCompleted);
-        return () => window.removeEventListener('auditCompleted', handleAuditCompleted);
-    }, [token]);
-
-    const fetchDashboardData = async () => {
+    // Export NIS2
+    const handleExportNis2 = async () => {
+        if (!nis2Stats.lastAudit) return;
+        setIsExporting(true);
         try {
-            const [auditsRes, progressRes] = await Promise.all([
-                fetch(`/api/audit/history${type === 'iso27001' ? '?type=iso27001' : ''}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                }),
-                fetch('/api/trainings/user/progress', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                })
-            ]);
-
-            if (auditsRes.ok && progressRes.ok) {
-                const audits = await auditsRes.json();
-                const progress = await progressRes.json();
-
-                setAuditHistory(audits);
-                setTrainingProgress(progress);
-
-                setStats({
-                    auditsCount: audits.length,
-                    trainingsInProgress: progress.filter((p: any) => !p.completed).length,
-                    trainingsCompleted: progress.filter((p: any) => p.completed).length,
-                    lastAudit: audits[0] || null
-                });
-            }
-        } catch (error) {
-            console.error('Erreur chargement données:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const downloadCertificate = async () => {
-        if (!stats.lastAudit) return;
-
-        try {
-            const response = await fetch(`/api/certificate/${stats.lastAudit.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
+            const url = `/api/certificate/${nis2Stats.lastAudit.id}`;
+            const filename = `Certificat_NIS2_${user?.companyName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (response.ok) {
                 const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
+                const urlBlob = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = `Certificat_NIS2_${user?.companyName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+                a.href = urlBlob;
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
-                window.URL.revokeObjectURL(url);
+                window.URL.revokeObjectURL(urlBlob);
                 document.body.removeChild(a);
             } else {
                 alert('Erreur lors du téléchargement du certificat');
             }
         } catch (error) {
-            console.error('Erreur téléchargement certificat:', error);
             alert('Erreur lors du téléchargement du certificat');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+    // Export ISO
+    const handleExportIso = async () => {
+        if (!isoStats.lastAudit) return;
+        setIsExporting(true);
+        try {
+            const url = `/api/certificate-iso27001/${isoStats.lastAudit.id}`;
+            const filename = `Certificat_ISO27001_${user?.companyName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+            const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (response.ok) {
+                const blob = await response.blob();
+                const urlBlob = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = urlBlob;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(urlBlob);
+                document.body.removeChild(a);
+            } else {
+                alert('Erreur lors du téléchargement du certificat');
+            }
+        } catch (error) {
+            alert('Erreur lors du téléchargement du certificat');
+        } finally {
+            setIsExporting(false);
         }
     };
 
-    if (isLoading) {
-        return (
-            <section className="min-h-screen py-24 relative flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4"></div>
-                    <p className="text-slate-400">Chargement de votre espace...</p>
-                </div>
-            </section>
-        );
+    if (loading) {
+        return <div className="text-center py-24">Chargement...</div>;
     }
 
     return (
-        <section className="min-h-screen py-24 relative">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-                {/* Header avec infos utilisateur */}
-                <div className="mb-12 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                    <div>
-                        <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-                            Tableau de bord
-                        </h1>
-                        <p className="text-slate-400 text-lg">
-                            Bienvenue, <span className="text-cyan-400 font-medium">{user?.email}</span>
-                        </p>
-                    </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div className="mb-12 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div>
+                    <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">Tableaux de bord</h1>
+                    <p className="text-slate-400 text-lg">Bienvenue, <span className="text-cyan-400 font-medium">{user?.email}</span></p>
                 </div>
-
-                {/* Infos entreprise */}
-                <div className="glass-panel rounded-2xl p-6 mb-8 border border-slate-700/50">
-                    <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20">
-                            <Building className="w-8 h-8 text-white" />
-                        </div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-white">{user?.companyName}</h2>
-                            <p className="text-cyan-400">Compte {user?.role === 'admin' ? 'Administrateur' : 'Utilisateur'}</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Score de Conformité - Tableau de bord sobre */}
-                {stats.lastAudit ? (
-                    complianceLevel && (
-                        <div className="glass-panel rounded-2xl p-8 mb-8 border border-slate-700/50">
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-white">Synthèse conformité</h2>
-                                    <p className="text-slate-400">Vue d'ensemble claire de votre audit NIS2</p>
-                                </div>
-                                <div className={`inline-flex items-center px-4 py-2 rounded-lg border text-sm font-semibold ${complianceLevel.pillClass} ${complianceLevel.color === 'red' ? 'bg-red-700/60 border-red-400 text-white animate-pulse' : ''}`}>
-                                    {complianceLevel.color === 'red' ? 'Risque élevé' : `Statut : ${complianceLevel.level}`}
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-950 rounded-lg p-6 border border-slate-800">
-                                <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
-                                    <div className="flex space-x-2">
-                                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    </div>
-                                    <div className="text-xs text-slate-500 font-mono">NIS2 COMPLIANCE DASHBOARD</div>
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                    <div className="bg-slate-900 p-5 rounded border border-slate-800">
-                                        <div className="text-slate-400 text-xs mb-2">Score de préparation</div>
-                                        <div className={`text-4xl font-bold ${complianceLevel.textColor}`}>{scorePercent}%</div>
-                                        <div className="w-full bg-slate-800 h-2 mt-4 rounded-full overflow-hidden">
-                                            <div className={`${complianceLevel.barColor} h-full`} style={{ width: `${scorePercent}%` }}></div>
-                                        </div>
-                                        <div className="text-xs text-slate-500 mt-3">{stats.lastAudit.readiness_score}/16 mesures en place</div>
-                                    </div>
-
-                                    <div className="bg-slate-900 p-5 rounded border border-slate-800 space-y-3">
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-400">Secteur</span>
-                                            <span className="text-white font-medium">{stats.lastAudit.sector_name}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-400">Type d'entité</span>
-                                            <span className={`${stats.lastAudit.sector_type === 'critical' ? 'text-red-400' : stats.lastAudit.sector_type === 'important' ? 'text-orange-400' : 'text-slate-300'} font-medium`}>
-                                                {stats.lastAudit.sector_type === 'critical' ? 'Critique' : stats.lastAudit.sector_type === 'important' ? 'Important' : 'Hors périmètre'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-400">Risque</span>
-                                            <span className={`${complianceLevel.textColor} font-semibold`}>{complianceLevel.riskLevel}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-400">Dernier audit</span>
-                                            <span className="text-slate-200">
-                                                {new Date(stats.lastAudit.created_at).toLocaleDateString('fr-FR')}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-slate-900 p-5 rounded border border-slate-800">
-                                        <div className="text-slate-400 text-xs mb-3">Indicateurs clés</div>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-slate-300">Audits réalisés</span>
-                                                <span className="text-white font-semibold">{stats.auditsCount}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-slate-300">Formations en cours</span>
-                                                <span className="text-white font-semibold">{stats.trainingsInProgress}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-slate-300">Formations complétées</span>
-                                                <span className="text-white font-semibold">{stats.trainingsCompleted}</span>
-                                            </div>
-                                            <div className="flex items-center justify-between text-sm">
-                                                <span className="text-slate-300">Mesures manquantes</span>
-                                                <span className="text-white font-semibold">{missingPoints}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-6 flex flex-wrap gap-3">
-                                    <button
-                                        disabled
-                                        className="px-6 py-3 bg-slate-800 text-white border border-slate-700 font-semibold rounded-lg opacity-60 cursor-not-allowed"
-                                    >
-                                        Nouvel audit
-                                    </button>
-                                    <button
-                                        onClick={downloadCertificate}
-                                        className="px-6 py-3 bg-slate-800 text-white border border-slate-700 font-semibold rounded-lg hover:bg-slate-700 transition-all flex items-center gap-2"
-                                    >
-                                        <Download className="w-4 h-4" />
-                                        Rapport d'audit PDF
-                                    </button>
-                                    <button
-                                        onClick={() => onContactClick && onContactClick('Contact depuis dashboard')}
-                                        className="px-6 py-3 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-cyan-500 transition-all"
-                                    >
-                                        Contactez-nous
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )
-                ) : (
-                    <div className="glass-panel rounded-2xl p-8 mb-8 border border-slate-700/50">
-                        <div className="text-center py-8">
-                            <div className="w-20 h-20 bg-cyan-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-cyan-500/30">
-                                <Shield className="w-10 h-10 text-cyan-400" />
-                            </div>
-                            <h3 className="text-2xl font-bold text-white mb-3">Évaluez votre Conformité NIS2</h3>
-                            <p className="text-slate-400 max-w-2xl mx-auto mb-6 leading-relaxed">
-                                Vous n'avez pas encore réalisé d'audit de conformité. Commencez maintenant pour connaître votre niveau de préparation face aux exigences de la directive NIS2.
-                            </p>
-                            <button
-                                onClick={() => onNavigate?.('nis2')}
-                                className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20"
-                            >
-                                Démarrer mon premier audit
-                                <ChevronRight className="ml-2 w-5 h-5" />
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Statistiques */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-                    <StatCard
-                        icon={<Shield className="w-6 h-6 text-cyan-400" />}
-                        title="Audits réalisés"
-                        value={stats.auditsCount.toString()}
-                        trend="Historique complet"
-                        color="cyan"
-                        highlight={false}
-                    />
-                    <StatCard
-                        icon={<BookOpen className="w-6 h-6 text-yellow-400" />}
-                        title="Formations en cours"
-                        value={stats.trainingsInProgress.toString()}
-                        trend={stats.trainingsInProgress > 0 ? "⚡ À terminer d'urgence" : "Aucune en cours"}
-                        color="yellow"
-                        highlight={stats.trainingsInProgress > 0}
-                    />
-                    <StatCard
-                        icon={<Award className="w-6 h-6 text-emerald-400" />}
-                        title="Formations complétées"
-                        value={stats.trainingsCompleted.toString()}
-                        trend="Certifications obtenues"
-                        color="emerald"
-                        highlight={false}
-                    />
-                    <StatCard
-                        icon={stats.lastAudit && (stats.lastAudit.readiness_score / 16) < 0.6 ?
-                            <AlertOctagon className="w-6 h-6 text-red-400" /> :
-                            <Activity className="w-6 h-6 text-purple-400" />
-                        }
-                        title="Mesures en place"
-                        value={stats.lastAudit ? `${stats.lastAudit.readiness_score}/16` : 'N/A'}
-                        trend={stats.lastAudit ?
-                            (stats.lastAudit.readiness_score / 16) >= 0.8 ? '✅ Excellent' :
-                                (stats.lastAudit.readiness_score / 16) >= 0.6 ? '⚠️ Insuffisant' :
-                                    '🚨 CRITIQUE' : 'Aucun audit'}
-                        color={stats.lastAudit ?
-                            (stats.lastAudit.readiness_score / 16) >= 0.8 ? 'emerald' :
-                                (stats.lastAudit.readiness_score / 16) >= 0.6 ? 'yellow' :
-                                    'red' : 'purple'}
-                        highlight={stats.lastAudit && (stats.lastAudit.readiness_score / 16) < 0.8}
-                    />
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-                    {/* Dernier audit */}
-                    <div className="glass-panel rounded-2xl p-6 border border-slate-700/50">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <Shield className="w-6 h-6 text-cyan-400" />
-                                Dernier Audit NIS2
-                            </h3>
-                        </div>
-
-                        {stats.lastAudit ? (
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
-                                    <div>
-                                        <p className="text-slate-400 text-sm">Secteur</p>
-                                        <p className="text-white font-medium">{stats.lastAudit.sector_name}</p>
-                                    </div>
-                                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${stats.lastAudit.sector_type === 'critical' ? 'bg-red-900/20 text-red-400' :
-                                        stats.lastAudit.sector_type === 'important' ? 'bg-orange-900/20 text-orange-400' :
-                                            'bg-slate-800 text-slate-400'
-                                        }`}>
-                                        {stats.lastAudit.sector_type === 'critical' ? 'Critique' :
-                                            stats.lastAudit.sector_type === 'important' ? 'Important' :
-                                                'Hors périmètre'}
-                                    </div>
-                                </div>
-
-                                <div className="p-4 bg-slate-800 rounded-lg">
-                                    <p className="text-slate-400 text-sm mb-2">Score de préparation</p>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex-1 bg-slate-700 rounded-full h-3 overflow-hidden">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-cyan-600 to-blue-600 rounded-full transition-all duration-500"
-                                                style={{ width: `${(stats.lastAudit.readiness_score / 16) * 100}%` }}
-                                            ></div>
-                                        </div>
-                                        <span className="text-white font-bold">{stats.lastAudit.readiness_score}/16</span>
-                                    </div>
-                                </div>
-
-                                <p className="text-slate-400 text-sm">
-                                    Réalisé le {new Date(stats.lastAudit.created_at).toLocaleDateString('fr-FR')}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <Shield className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                                <p className="text-slate-500">Aucun audit réalisé</p>
-                                <p className="text-slate-600 text-sm mt-2">Commencez votre premier audit NIS2</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Formations récentes */}
-                    <div className="glass-panel rounded-2xl p-6 border border-slate-700/50">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <BookOpen className="w-6 h-6 text-cyan-400" />
-                                Formations Récentes
-                            </h3>
-                        </div>
-
-                        {trainingProgress.length > 0 ? (
-                            <div className="space-y-3">
-                                {trainingProgress.slice(0, 5).map((progress: any) => (
-                                    <div key={progress.id} className="p-4 bg-slate-800 rounded-lg hover:bg-slate-750 transition-colors">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h4 className="text-white font-medium text-sm">{progress.title}</h4>
-                                            {progress.completed ? (
-                                                <Award className="w-5 h-5 text-green-400" />
-                                            ) : (
-                                                <Clock className="w-5 h-5 text-yellow-400" />
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex-1 bg-slate-700 rounded-full h-2 overflow-hidden">
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-500 ${progress.completed ? 'bg-green-500' : 'bg-yellow-500'
-                                                        }`}
-                                                    style={{ width: `${progress.progress}%` }}
-                                                ></div>
-                                            </div>
-                                            <span className="text-slate-400 text-xs font-medium">{progress.progress}%</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <BookOpen className="w-12 h-12 text-slate-700 mx-auto mb-3" />
-                                <p className="text-slate-500">Aucune formation commencée</p>
-                                <p className="text-slate-600 text-sm mt-2">Explorez notre catalogue</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Actions rapides */}
-                <div className="mt-12">
-                    <h3 className="text-2xl font-bold text-white mb-6">Actions Rapides</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <ActionCard
-                            icon={<Shield className="w-8 h-8 text-cyan-400" />}
-                            title="Nouvel audit NIS2"
-                            description="Évaluez votre conformité"
-                            onClick={() => onNavigate?.('nis2')}
-                        />
-                        <ActionCard
-                            icon={<BookOpen className="w-8 h-8 text-purple-400" />}
-                            title="Parcourir les formations"
-                            description="Développez vos compétences"
-                            onClick={() => onNavigate?.('trainings')}
-                        />
-                        <ActionCard
-                            icon={<FileText className="w-8 h-8 text-green-400" />}
-                            title="Demander un devis"
-                            description="Solutions personnalisées"
-                            onClick={() => onContactClick && onContactClick('Demande de devis depuis dashboard')}
-                        />
-                    </div>
-                </div>
-
             </div>
-        </section>
+
+            {/* Dashboard NIS2 synthétique */}
+            <section className="mb-16">
+                <h2 className="text-2xl font-bold text-white mb-4">NIS2</h2>
+                <div className="flex flex-col lg:flex-row gap-8">
+                    <div className="flex-1">
+                        <div className="rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl">
+                            <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                                <div className="flex space-x-2">
+                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                </div>
+                                <div className="text-xs text-slate-500 font-mono">NIS2 COMPLIANCE DASHBOARD</div>
+                            </div>
+                            {nis2Stats.lastAudit ? (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="bg-slate-900 p-4 rounded border border-slate-800">
+                                            <div className="text-slate-400 text-xs mb-1">Score de Sécurité</div>
+                                            <div className="text-2xl font-bold text-emerald-400">{Math.round((nis2Stats.lastAudit.readiness_score / 16) * 100)}/100</div>
+                                            <div className="w-full bg-slate-800 h-1 mt-2 rounded-full overflow-hidden">
+                                                <div className="bg-emerald-500 h-full" style={{ width: `${Math.round((nis2Stats.lastAudit.readiness_score / 16) * 100)}%` }}></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-900 p-4 rounded border border-slate-800">
+                                            <div className="text-slate-400 text-xs mb-1">Dernier audit</div>
+                                            <div className="text-2xl font-bold text-cyan-400">{new Date(nis2Stats.lastAudit.created_at).toLocaleDateString('fr-FR')}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 bg-slate-900 rounded border border-slate-800 p-4 overflow-hidden relative">
+                                        <div className="space-y-2 relative z-10">
+                                            <div className="flex items-center justify-between text-xs py-2 border-b border-slate-800/50">
+                                                <span className="text-slate-300">Secteur</span>
+                                                <span className="text-emerald-400">{nis2Stats.lastAudit.sector_name}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs py-2 border-b border-slate-800/50">
+                                                <span className="text-slate-300">Score</span>
+                                                <span className="text-emerald-400">{nis2Stats.lastAudit.readiness_score}/16</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-6 flex flex-wrap gap-3">
+                                        <button onClick={handleExportNis2} className="px-6 py-3 bg-slate-800 text-white border border-slate-700 font-semibold rounded-lg hover:bg-slate-700 transition-all flex items-center gap-2" disabled={isExporting}>
+                                            <Download className="w-4 h-4" /> Exporter le PDF NIS2
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <Shield className="w-12 h-12 text-cyan-400 mx-auto mb-3" />
+                                    <p className="text-slate-500">Aucun audit NIS2 réalisé</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {/* Historique NIS2 */}
+                    <div className="flex-1">
+                        <div className="rounded-xl bg-slate-900 border border-slate-800 p-6">
+                            <h4 className="text-lg font-bold text-white mb-2">Historique des audits NIS2</h4>
+                            <ul className="divide-y divide-slate-800">
+                                {nis2Stats.audits.length === 0 && <li className="text-slate-500">Aucun audit réalisé.</li>}
+                                {nis2Stats.audits.map((audit, idx) => (
+                                    <li key={audit.id || idx} className="py-3 flex items-center justify-between">
+                                        <span className="text-slate-300">{new Date(audit.created_at).toLocaleString()}</span>
+                                        <span className="font-semibold text-cyan-400">{Math.round((audit.readiness_score / 16) * 100)}%</span>
+                                        <span className="text-xs text-slate-500">{audit.sector_name}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Dashboard ISO 27001 synthétique */}
+            <section>
+                <h2 className="text-2xl font-bold text-white mb-4">ISO 27001</h2>
+                <div className="flex flex-col lg:flex-row gap-8">
+                    <div className="flex-1">
+                        <div className="rounded-xl bg-slate-900 border border-slate-800 p-6 shadow-2xl">
+                            <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                                <div className="flex space-x-2">
+                                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                </div>
+                                <div className="text-xs text-slate-500 font-mono">ISO 27001 DASHBOARD</div>
+                            </div>
+                            {isoStats.lastAudit ? (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="bg-slate-900 p-4 rounded border border-slate-800">
+                                            <div className="text-slate-400 text-xs mb-1">Score de Sécurité</div>
+                                            <div className="text-2xl font-bold text-blue-400">{Math.round((isoStats.lastAudit.readiness_score / 14) * 100)}/100</div>
+                                            <div className="w-full bg-slate-800 h-1 mt-2 rounded-full overflow-hidden">
+                                                <div className="bg-blue-500 h-full" style={{ width: `${Math.round((isoStats.lastAudit.readiness_score / 14) * 100)}%` }}></div>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-900 p-4 rounded border border-slate-800">
+                                            <div className="text-slate-400 text-xs mb-1">Dernier audit</div>
+                                            <div className="text-2xl font-bold text-blue-400">{new Date(isoStats.lastAudit.created_at).toLocaleDateString('fr-FR')}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 bg-slate-900 rounded border border-slate-800 p-4 overflow-hidden relative">
+                                        <div className="space-y-2 relative z-10">
+                                            <div className="flex items-center justify-between text-xs py-2 border-b border-slate-800/50">
+                                                <span className="text-slate-300">Secteur</span>
+                                                <span className="text-blue-400">{isoStats.lastAudit.sector_name}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs py-2 border-b border-slate-800/50">
+                                                <span className="text-slate-300">Score</span>
+                                                <span className="text-blue-400">{isoStats.lastAudit.readiness_score}/14</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-6 flex flex-wrap gap-3">
+                                        <button onClick={handleExportIso} className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-500 transition-all flex items-center gap-2" disabled={isExporting}>
+                                            <Download className="w-4 h-4" /> Exporter le PDF ISO 27001
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center py-8">
+                                    <PieChart className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                                    <p className="text-slate-500">Aucun audit ISO 27001 réalisé</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {/* Historique ISO */}
+                    <div className="flex-1">
+                        <div className="rounded-xl bg-slate-900 border border-slate-800 p-6">
+                            <h4 className="text-lg font-bold text-white mb-2">Historique des audits ISO 27001</h4>
+                            <ul className="divide-y divide-slate-800">
+                                {isoStats.audits.length === 0 && <li className="text-slate-500">Aucun audit réalisé.</li>}
+                                {isoStats.audits.map((audit, idx) => (
+                                    <li key={audit.id || idx} className="py-3 flex items-center justify-between">
+                                        <span className="text-slate-300">{new Date(audit.created_at).toLocaleString()}</span>
+                                        <span className="font-semibold text-blue-400">{Math.round((audit.readiness_score / 14) * 100)}%</span>
+                                        <span className="text-xs text-slate-500">{audit.sector_name}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
     );
 };
 
