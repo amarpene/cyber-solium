@@ -1,0 +1,227 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Reset de base et styles globaux */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0f172a;
+  /* Slate 950 */
+  color: #f8fafc;
+  /* Slate 50 */
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Utilitaires personnalisés "Cyber" */
+.glass-panel {
+  background: rgba(30, 41, 59, 0.7);
+  /* Slate 800 avec opacité */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cyber-gradient {
+  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+}
+
+/* Animations personnalisées */
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Animations dramatiques pour le dashboard */
+@keyframes danger-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7),
+      0 0 30px rgba(239, 68, 68, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 20px rgba(239, 68, 68, 0),
+      0 0 50px rgba(239, 68, 68, 0.6);
+  }
+}
+
+@keyframes danger-blink {
+
+  0%,
+  49%,
+  100% {
+    background-color: rgba(127, 29, 29, 0.3);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+
+  50%,
+  99% {
+    background-color: rgba(239, 68, 68, 0.4);
+    border-color: rgba(239, 68, 68, 1);
+  }
+}
+
+@keyframes warning-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 40px rgba(245, 158, 11, 0.7);
+  }
+}
+
+@keyframes text-flash {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes alert-bounce {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.danger-pulse {
+  animation: danger-pulse 2s ease-in-out infinite;
+}
+
+.danger-blink {
+  animation: danger-blink 1.5s ease-in-out infinite;
+}
+
+.warning-glow {
+  animation: warning-glow 2s ease-in-out infinite;
+}
+
+.text-flash {
+  animation: text-flash 1.5s ease-in-out infinite;
+}
+
+.shake-animation {
+  animation: shake 0.5s ease-in-out;
+}
+
+.alert-bounce {
+  animation: alert-bounce 1s ease-in-out infinite;
+}
+
+/* Custom Scrollbar pour les zones de défilement (comme le calculateur) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(6, 182, 212, 0.3);
+  /* Cyan 500 faible */
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.6);
+  /* Cyan 500 fort */
+}
+
+/* Utilitaires d'animation d'entrée (utilisés dans les composants React) */
+.animate-in {
+  animation-duration: 0.5s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: fadeIn;
+}
+
+.slide-in-from-bottom-4 {
+  --tw-enter-translate-y: 1rem;
+  animation-name: enter;
+}
+
+.slide-in-from-bottom-8 {
+  --tw-enter-translate-y: 2rem;
+  animation-name: enter;
+}
+
+.zoom-in-95 {
+  --tw-enter-scale: 0.95;
+  animation-name: enter;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--tw-enter-translate-y, 0)) scale(var(--tw-enter-scale, 1));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
